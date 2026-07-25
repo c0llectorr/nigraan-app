@@ -10,6 +10,9 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
+const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const GEMMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4:e4b';
+
 app.use(express.json({ limit: '10mb' }));
 
 // Helper to initialize GoogleGenAI lazily with telemetry
@@ -29,13 +32,38 @@ function getGenAIClient(): GoogleGenAI | null {
 }
 
 // API Health Check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  let ollamaRunning = false;
+  let modelAvailable = false;
+  let errorMsg = '';
+
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/tags`);
+    if (response.ok) {
+      ollamaRunning = true;
+      const data = (await response.json()) as any;
+      if (data.models && Array.isArray(data.models)) {
+        modelAvailable = data.models.some((m: any) => 
+          m.name === GEMMA_MODEL || 
+          m.name.startsWith(GEMMA_MODEL + ':') || 
+          GEMMA_MODEL.startsWith(m.name)
+        );
+      }
+    }
+  } catch (err: any) {
+    errorMsg = err.message;
+  }
+
   const ai = getGenAIClient();
   res.json({
     status: 'ok',
-    aiAvailable: !!ai,
+    ollamaRunning,
+    modelAvailable,
+    modelName: GEMMA_MODEL,
+    geminiAvailable: !!ai,
+    error: errorMsg || undefined,
     timestamp: new Date().toISOString(),
-    environment: 'Nigraan On-Device Triage Engine (Offline + Gemini Fallback)',
+    environment: 'Nigraan On-Device Triage Engine (Offline Gemma 4 Local Inference)',
   });
 });
 
@@ -45,15 +73,58 @@ app.post('/api/visits/assess', async (req, res) => {
     const { ageMonths, vitals, selectedSignKeys = [], symptomNotes = '', childName = 'Child' } = req.body;
 
     let extractedSignKeys: string[] = [];
-    let aiUrduExplanation = '';
-    let aiEnglishExplanation = '';
+    let ollamaSuccess = false;
 
-    const ai = getGenAIClient();
+    // Step 1: Extract structured clinical signs using Gemma 4 via Ollama
+    try {
+      const extractionPrompt = `You are a clinical decision-support AI implementing WHO IMNCI (Integrated Management of Neonatal and Childhood Illness) guidelines for Lady Health Workers in rural Pakistan.
+The input text below may be in Urdu, Roman Urdu, Sindhi, Pashto, Punjabi, or English (or a mixed regional dialect):
+"${symptomNotes}"
 
-    if (ai) {
-      try {
-        // Step 1: Extract structured clinical signs using Gemini 3.6 Flash
-        const extractionPrompt = `You are a clinical decision-support AI implementing WHO IMNCI (Integrated Management of Neonatal and Childhood Illness) guidelines for Lady Health Workers in rural Pakistan.
+Analyze the symptoms and extract all applicable WHO IMNCI clinical danger keys from this list:
+- unable_to_feed: Child cannot drink or breastfeed, or refuses to suck (e.g. Urdu: "دودھ نہیں پی رہا", Pashto: "تی نه شي روئلی", Sindhi: "پير نه ٿو پئي", Punjabi: "دودھ نہیں پیندا", Roman: "doodh nahi peeta", "paani nahi peeta").
+- vomiting_everything: Vomits all food, milk, or fluids (e.g. Urdu: "ہر چیز الٹی کر دیتا ہے", Pashto: "کېاسته کوي", Sindhi: "اُلٽي ٿو ڪري", Punjabi: "الٹی کردا ہے", Roman: "har cheez ulti kar deta hai").
+- convulsions: History of fits, seizures, or jerking (e.g. Urdu: "جھٹکے لگتے ہیں", Pashto: "تشنج", Sindhi: "جھٽڪا ٿا لڳن", Punjabi: "جھٹکے پیندے نے", Roman: "jhatkay lagtay hain", "seizures").
+- lethargy: Lethargic, unconscious, or unresponsive (e.g. Urdu: "غنوگی / بے ہوش", Pashto: "بے هوشه", Sindhi: "بي هوش / گهري ننڊ", Punjabi: "بے ہوش / ستا رہندا ہے", Roman: "sota rehta hai", "be hosh", "be jaan").
+- chest_indrawing: Lower chest wall indrawing (e.g. Urdu: "پسلی دھنسنا", Pashto: "پښتۍ لوېدل", Sindhi: "پسلي هلڻ", Punjabi: "پسلیاں چلنا", Roman: "pasli chal rahi hai", "pasli dhans rahi hai").
+- stiff_neck: Stiff neck or neck rigidity (e.g. Urdu: "گردن اکڑنا", Pashto: "غاړه سخته شوې", Sindhi: "ڳچي سختي", Punjabi: "دھون اکڑ گئی", Roman: "gardan akad gayi hai").
+- severe_dehydration: Sunken eyes or poor skin turgor (e.g. Urdu: "آنکھیں اندر دھنس گئیں", Roman: "aankhen andar chali gayi").
+- fast_breathing: Rapid breathing rate or panting (e.g. Urdu: "تیز سانسیں", Pashto: "ګړندۍ ساه", Sindhi: "تيز ساه", Punjabi: "تیز ساہ", Roman: "sans teez hai", "teez saans").
+- fever_moderate: Fever / high body temperature (e.g. Urdu: "بخار", Pashto: "تبه", Sindhi: "تاپ", Punjabi: "تپ / بخار", Roman: "bukhar hai", "tap hai").
+- ear_discharge: Ear pain or pus draining from ear (e.g. Urdu: "کان سے پیپ", Pashto: "له غوږ څخه چرک", Sindhi: "ڪن مان پونءِ", Punjabi: "کن چوں پیپ", Roman: "kaan se peep").
+
+Respond ONLY with a JSON object containing a 'detectedKeys' array of strings. Format:
+{"detectedKeys": ["key1", "key2"]}`;
+
+      const ollamaRes = await fetch(`${OLLAMA_URL}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: GEMMA_MODEL,
+          prompt: extractionPrompt,
+          stream: false,
+          format: 'json',
+        }),
+      });
+
+      if (ollamaRes.ok) {
+        const ollamaData = await ollamaRes.json();
+        const parsed = JSON.parse(ollamaData.response);
+        if (parsed && Array.isArray(parsed.detectedKeys)) {
+          extractedSignKeys = parsed.detectedKeys;
+          ollamaSuccess = true;
+        }
+      }
+    } catch (ollamaErr) {
+      console.warn('Ollama Gemma 4 extraction failed or unavailable, checking Gemini fallback:', ollamaErr);
+    }
+
+    // Step 1.5: Gemini Fallback for extraction
+    if (!ollamaSuccess) {
+      const ai = getGenAIClient();
+      if (ai) {
+        try {
+          const extractionPrompt = `You are a clinical decision-support AI implementing WHO IMNCI (Integrated Management of Neonatal and Childhood Illness) guidelines for Lady Health Workers in rural Pakistan.
 The input text below may be in Urdu, Roman Urdu, Sindhi, Pashto, Punjabi, or English (or a mixed regional dialect):
 "${symptomNotes}"
 
@@ -71,37 +142,38 @@ Analyze the symptoms and extract all applicable WHO IMNCI clinical danger keys f
 
 Return a JSON object matching the requested schema.`;
 
-        const extractionResponse = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: extractionPrompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                detectedKeys: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                  description: 'List of detected IMNCI danger sign keys',
+          const extractionResponse = await ai.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: extractionPrompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  detectedKeys: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: 'List of detected IMNCI danger sign keys',
+                  },
+                  chiefComplaintSummary: {
+                    type: Type.STRING,
+                    description: 'Short English summary of complaint',
+                  },
                 },
-                chiefComplaintSummary: {
-                  type: Type.STRING,
-                  description: 'Short English summary of complaint',
-                },
+                required: ['detectedKeys'],
               },
-              required: ['detectedKeys'],
             },
-          },
-        });
+          });
 
-        if (extractionResponse.text) {
-          const parsed = JSON.parse(extractionResponse.text.trim());
-          if (Array.isArray(parsed.detectedKeys)) {
-            extractedSignKeys = parsed.detectedKeys;
+          if (extractionResponse.text) {
+            const parsed = JSON.parse(extractionResponse.text.trim());
+            if (Array.isArray(parsed.detectedKeys)) {
+              extractedSignKeys = parsed.detectedKeys;
+            }
           }
+        } catch (aiErr) {
+          console.warn('AI Extraction fallback error:', aiErr);
         }
-      } catch (aiErr) {
-        console.warn('AI Extraction error, falling back to local engine:', aiErr);
       }
     }
 
@@ -115,7 +187,8 @@ Return a JSON object matching the requested schema.`;
     );
 
     // Step 3: Optional AI Plain Urdu Explanation Refinement
-    if (ai) {
+    let explanationOllamaSuccess = false;
+    if (ollamaSuccess) {
       try {
         const explanationPrompt = `You are an empathetic medical advisor assisting Lady Health Worker Amina in Pakistan.
 The deterministic IMNCI engine has classified child ${childName} (Age: ${ageMonths} months) as ${result.classification}.
@@ -124,31 +197,74 @@ Detected Danger Signs: ${result.dangerSigns.map(d => d.nameEn).join(', ') || 'No
 
 Provide:
 1. A clear, plain-Urdu explanation ("سادہ اردو وضاحت") for the mother (2 short sentences).
-2. A brief English summary for the referral note.`;
+2. A brief English summary for the referral note.
 
-        const expResponse = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: explanationPrompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                urduExplanation: { type: Type.STRING },
-                englishExplanation: { type: Type.STRING },
-              },
-              required: ['urduExplanation', 'englishExplanation'],
-            },
-          },
+Respond ONLY with valid JSON matching:
+{
+  "urduExplanation": "...",
+  "englishExplanation": "..."
+}`;
+
+        const ollamaRes = await fetch(`${OLLAMA_URL}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: GEMMA_MODEL,
+            prompt: explanationPrompt,
+            stream: false,
+            format: 'json',
+          }),
         });
 
-        if (expResponse.text) {
-          const expParsed = JSON.parse(expResponse.text.trim());
-          if (expParsed.urduExplanation) result.explanationUrdu = expParsed.urduExplanation;
-          if (expParsed.englishExplanation) result.explanationEnglish = expParsed.englishExplanation;
+        if (ollamaRes.ok) {
+          const ollamaData = await ollamaRes.json();
+          const parsed = JSON.parse(ollamaData.response);
+          if (parsed.urduExplanation) result.explanationUrdu = parsed.urduExplanation;
+          if (parsed.englishExplanation) result.explanationEnglish = parsed.englishExplanation;
+          explanationOllamaSuccess = true;
         }
       } catch (e) {
-        // Fallback explanations already set by engine
+        console.warn('Ollama explanation generation failed:', e);
+      }
+    }
+
+    if (!explanationOllamaSuccess) {
+      const ai = getGenAIClient();
+      if (ai) {
+        try {
+          const explanationPrompt = `You are an empathetic medical advisor assisting Lady Health Worker Amina in Pakistan.
+The deterministic IMNCI engine has classified child ${childName} (Age: ${ageMonths} months) as ${result.classification}.
+Vitals: Temp ${vitals.temperatureC}°C, Respiratory Rate ${vitals.respiratoryRateBpm} bpm, Fever ${vitals.feverDays} days.
+Detected Danger Signs: ${result.dangerSigns.map(d => d.nameEn).join(', ') || 'None'}.
+
+Provide:
+1. A clear, plain-Urdu explanation ("سادہ اردو وضاحت") for the mother (2 short sentences).
+2. A brief English summary for the referral note.`;
+
+          const expResponse = await ai.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: explanationPrompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  urduExplanation: { type: Type.STRING },
+                  englishExplanation: { type: Type.STRING },
+                },
+                required: ['urduExplanation', 'englishExplanation'],
+              },
+            },
+          });
+
+          if (expResponse.text) {
+            const expParsed = JSON.parse(expResponse.text.trim());
+            if (expParsed.urduExplanation) result.explanationUrdu = expParsed.urduExplanation;
+            if (expParsed.englishExplanation) result.explanationEnglish = expParsed.englishExplanation;
+          }
+        } catch (e) {
+          // Fallback explanations already set by engine
+        }
       }
     }
 
