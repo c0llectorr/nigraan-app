@@ -53,21 +53,21 @@ app.post('/api/visits/assess', async (req, res) => {
     if (ai) {
       try {
         // Step 1: Extract structured clinical signs using Gemini 3.6 Flash
-        const extractionPrompt = `You are a clinical decision-support AI implementing WHO IMNCI (Integrated Management of Neonatal and Childhood Illness) guidelines for Lady Health Workers in Pakistan.
-Extract structured clinical signs from the following spoken or written Urdu/English symptom description:
+        const extractionPrompt = `You are a clinical decision-support AI implementing WHO IMNCI (Integrated Management of Neonatal and Childhood Illness) guidelines for Lady Health Workers in rural Pakistan.
+The input text below may be in Urdu, Roman Urdu, Sindhi, Pashto, Punjabi, or English (or a mixed regional dialect):
 "${symptomNotes}"
 
-Check if any of these specific WHO IMNCI danger keys are present or strongly implied:
-- unable_to_feed (child cannot drink or breastfeed)
-- vomiting_everything (vomits all food and fluid)
-- convulsions (history of fits/seizures during this illness)
-- lethargy (unconscious, abnormally sleepy or unresponsive)
-- chest_indrawing (lower chest wall moves in on inhalation)
-- stiff_neck (inability to flex neck forward)
-- severe_dehydration (sunken eyes, skin pinch > 2s)
-- fast_breathing (rapid breathing rate)
-- fever_moderate (fever for 2-7 days)
-- ear_discharge (pus or pain from ear)
+Analyze the symptoms and extract all applicable WHO IMNCI clinical danger keys from this list:
+- unable_to_feed: Child cannot drink or breastfeed, or refuses to suck (e.g. Urdu: "دودھ نہیں پی رہا", Pashto: "تی نه شي روئلی", Sindhi: "پير نه ٿو پئي", Punjabi: "دودھ نہیں پیندا", Roman: "doodh nahi peeta", "paani nahi peeta").
+- vomiting_everything: Vomits all food, milk, or fluids (e.g. Urdu: "ہر چیز الٹی کر دیتا ہے", Pashto: "کېاسته کوي", Sindhi: "اُلٽي ٿو ڪري", Punjabi: "الٹی کردا ہے", Roman: "har cheez ulti kar deta hai").
+- convulsions: History of fits, seizures, or jerking (e.g. Urdu: "جھٹکے لگتے ہیں", Pashto: "تشنج", Sindhi: "جھٽڪا ٿا لڳن", Punjabi: "جھٹکے پیندے نے", Roman: "jhatkay lagtay hain", "seizures").
+- lethargy: Lethargic, unconscious, or unresponsive (e.g. Urdu: "غنوگی / بے ہوش", Pashto: "بے هوشه", Sindhi: "بي هوش / گهري ننڊ", Punjabi: "بے ہوش / ستا رہندا ہے", Roman: "sota rehta hai", "be hosh", "be jaan").
+- chest_indrawing: Lower chest wall indrawing (e.g. Urdu: "پسلی دھنسنا", Pashto: "پښتۍ لوېدل", Sindhi: "پسلي هلڻ", Punjabi: "پسلیاں چلنا", Roman: "pasli chal rahi hai", "pasli dhans rahi hai").
+- stiff_neck: Stiff neck or neck rigidity (e.g. Urdu: "گردن اکڑنا", Pashto: "غاړه سخته شوې", Sindhi: "ڳچي سختي", Punjabi: "دھون اکڑ گئی", Roman: "gardan akad gayi hai").
+- severe_dehydration: Sunken eyes or poor skin turgor (e.g. Urdu: "آنکھیں اندر دھنس گئیں", Roman: "aankhen andar chali gayi").
+- fast_breathing: Rapid breathing rate or panting (e.g. Urdu: "تیز سانسیں", Pashto: "ګړندۍ ساه", Sindhi: "تيز ساه", Punjabi: "تیز ساہ", Roman: "sans teez hai", "teez saans").
+- fever_moderate: Fever / high body temperature (e.g. Urdu: "بخار", Pashto: "تبه", Sindhi: "تاپ", Punjabi: "تپ / بخار", Roman: "bukhar hai", "tap hai").
+- ear_discharge: Ear pain or pus draining from ear (e.g. Urdu: "کان سے پیپ", Pashto: "له غوږ څخه چرک", Sindhi: "ڪن مان پونءِ", Punjabi: "کن چوں پیپ", Roman: "kaan se peep").
 
 Return a JSON object matching the requested schema.`;
 
@@ -162,37 +162,138 @@ Provide:
   }
 });
 
-// Image Analysis Stretch Goal (Growth Chart or Rash Photo)
+// IMNCI Image Processing & Vision Inference API Route
 app.post('/api/analyze-image', async (req, res) => {
   try {
-    const { imageBase64, mimeType = 'image/jpeg', prompt = 'Analyze this clinical photo (growth chart or visible symptom) for Lady Health Worker assessment.' } = req.body;
+    const { imageBase64, mimeType = 'image/jpeg', patientContext = '' } = req.body;
+
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'Image data is required' });
+    }
 
     const ai = getGenAIClient();
     if (!ai) {
-      return res.status(503).json({ error: 'Gemini API Key not configured. Using local offline mode.' });
+      return res.status(503).json({ error: 'Gemini API Key not configured. AI vision inference offline.' });
     }
 
-    const imagePart = {
-      inlineData: {
-        data: imageBase64.replace(/^data:image\/\w+;base64,/, ''),
-        mimeType,
-      },
-    };
+    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    const visionSystemPrompt = `You are a specialized diagnostic AI performing WHO IMNCI (Integrated Management of Neonatal and Childhood Illness) clinical image analysis for Lady Health Workers in Pakistan.
+
+Analyze the uploaded clinical photo (skin rash, eyes, mouth, posture, body/limb wasting, ear discharge, or jaundice) according to WHO IMNCI diagnostic protocols.
+
+Patient Context: ${patientContext || 'Child under 5 years old in rural clinic'}
+
+Examine the image carefully for identifiable clinical conditions:
+1. Measles (Generalized maculopapular rash, Koplik spots, conjunctivitis/red eyes, fever)
+2. Severe Eye Infection / Corneal Clouding / Conjunctival Pus
+3. Severe Acute Malnutrition (SAM): Visible severe wasting (marasmus), bipedal edema (kwashiorkor), loose skin folds
+4. Mouth Ulcers / Oral Candidiasis (Thrush) / Stomatitis
+5. Severe Skin Infections: Impetigo, bullous lesions, pustules, extensive scabies
+6. Active Ear Pus Discharge / Otitis Media
+7. Neonatal Jaundice (yellowing of skin/soles/eyes)
+8. Severe Respiratory Distress / Visible chest wall indrawing
+
+Map detected findings to applicable WHO IMNCI danger keys from this exact list:
+- "measles_rash"
+- "eye_clouding"
+- "visible_wasting"
+- "mouth_ulcers"
+- "skin_pustules"
+- "jaundice_neonatal"
+- "ear_discharge"
+- "chest_indrawing"
+
+Determine Triage Level:
+- "RED": Severe complicated measles, corneal clouding, SAM wasting/edema, severe jaundice, chest indrawing (Requires URGENT Hospital Referral)
+- "YELLOW": Mouth ulcers, mild skin pustules, ear discharge (Requires local treatment & 2-day recheck)
+- "GREEN": Normal skin / no visible danger signs
+
+Provide IMNCI protocol step-by-step action guidelines (e.g., Vitamin A dose, antibiotic dose, eye ointment application, gentian violet, urgent referral).
+
+Return a JSON object conforming strictly to the requested schema.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
       contents: {
         parts: [
-          imagePart,
-          { text: `${prompt} Provide clinical observations, possible IMNCI danger signs, and plain Urdu summary for the mother.` },
+          {
+            inlineData: {
+              data: cleanBase64,
+              mimeType,
+            },
+          },
+          { text: visionSystemPrompt },
         ],
+      },
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            detectedDisease: {
+              type: Type.STRING,
+              description: 'Primary clinical visual finding (e.g. Measles Rash with Eye Complications)',
+            },
+            imnciClassification: {
+              type: Type.STRING,
+              description: 'IMNCI classification title',
+            },
+            triageColor: {
+              type: Type.STRING,
+              description: 'RED, YELLOW, or GREEN',
+            },
+            confidence: {
+              type: Type.STRING,
+              description: 'Confidence level e.g. High (92%)',
+            },
+            imnciProtocolSteps: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: 'Step-by-step IMNCI protocol treatment instructions',
+            },
+            detectedDangerKeys: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: 'Applicable IMNCI danger sign keys',
+            },
+            urduDiagnosisSummary: {
+              type: Type.STRING,
+              description: 'Clear plain Urdu diagnosis summary for mother and health worker',
+            },
+            englishDiagnosisSummary: {
+              type: Type.STRING,
+              description: 'Clinical English note for referral slip',
+            },
+            differentialDiagnoses: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: 'List of 2-3 differential diagnoses',
+            },
+          },
+          required: [
+            'detectedDisease',
+            'imnciClassification',
+            'triageColor',
+            'confidence',
+            'imnciProtocolSteps',
+            'detectedDangerKeys',
+            'urduDiagnosisSummary',
+            'englishDiagnosisSummary',
+          ],
+        },
       },
     });
 
-    res.json({
-      success: true,
-      analysisText: response.text || 'Photo analyzed successfully.',
-    });
+    if (response.text) {
+      const parsed = JSON.parse(response.text.trim());
+      res.json({
+        success: true,
+        ...parsed,
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to generate visual analysis' });
+    }
   } catch (err: any) {
     console.error('Image analysis error:', err);
     res.status(500).json({ error: err?.message || 'Image analysis failed' });

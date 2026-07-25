@@ -95,10 +95,64 @@ export const DANGER_SIGNS_CATALOG: DangerSign[] = [
     id: 'ds-11',
     key: 'ear_discharge',
     nameEn: 'Ear discharge or ear pain',
-    nameUr: 'کان سے پواڈ نکلنا یا کان کا درد',
+    nameUr: 'کان سے پیپ نکلنا یا کان کا درد',
     category: 'respiratory',
     severity: 'YELLOW',
     description: 'Acute ear infection requiring dry wiping and local care.'
+  },
+  {
+    id: 'ds-12',
+    key: 'measles_rash',
+    nameEn: 'Measles Rash (Generalized maculopapular rash)',
+    nameUr: 'خسرہ کے سرخ نشانات (خسرہ کی علامات)',
+    category: 'fever',
+    severity: 'RED',
+    description: 'Generalized rash with fever and cough, runny nose, or red eyes. High risk of complications.'
+  },
+  {
+    id: 'ds-13',
+    key: 'eye_clouding',
+    nameEn: 'Corneal clouding / Severe eye infection',
+    nameUr: 'آنکھ میں دھندلاہٹ یا شدید پیپ',
+    category: 'fever',
+    severity: 'RED',
+    description: 'Clouding of the cornea or severe pus draining from eyes indicating deep ocular infection.'
+  },
+  {
+    id: 'ds-14',
+    key: 'visible_wasting',
+    nameEn: 'Visible Severe Wasting / Bipedal Edema (SAM)',
+    nameUr: 'شدید جسمانی سکھاؤ یا پاؤں کی سوجن',
+    category: 'malnutrition',
+    severity: 'RED',
+    description: 'Severe acute malnutrition signs: muscle wasting, marasmic kwashiorkor edema.'
+  },
+  {
+    id: 'ds-15',
+    key: 'mouth_ulcers',
+    nameEn: 'Deep or extensive mouth ulcers / Thrush',
+    nameUr: 'منہ کے چھالے یا سفیدی (چھالا)',
+    category: 'fever',
+    severity: 'YELLOW',
+    description: 'Painful mouth ulcers or oral candidiasis preventing fluid intake.'
+  },
+  {
+    id: 'ds-16',
+    key: 'skin_pustules',
+    nameEn: 'Severe skin pustules / Impetigo',
+    nameUr: 'جلد پر دانائے اور پیپ والے چھالے',
+    category: 'general_danger',
+    severity: 'YELLOW',
+    description: 'Multiple skin lesions or bullous pustules requiring topical gentian violet or antibiotics.'
+  },
+  {
+    id: 'ds-17',
+    key: 'jaundice_neonatal',
+    nameEn: 'Severe Jaundice (Yellow palms/soles/eyes)',
+    nameUr: 'شدید یرقان (آنکھوں اور جلد کی زردی)',
+    category: 'general_danger',
+    severity: 'RED',
+    description: 'Hyperbilirubinemia in neonate/young infant requiring immediate phototherapy or exchange transfusion.'
   }
 ];
 

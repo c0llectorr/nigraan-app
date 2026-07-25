@@ -122,6 +122,19 @@ export const AssessmentResultModal: React.FC<AssessmentResultModalProps> = ({
           <p className="text-xs text-slate-500 italic">
             Translation: {explanationEnglish}
           </p>
+
+          {/* Attached Clinical Photo Thumbnail */}
+          {visit.photoUrl && (
+            <div className="pt-2 border-t border-slate-200 flex items-center space-x-3">
+              <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-300 bg-slate-900 shrink-0">
+                <img src={visit.photoUrl} alt="Clinical photo" className="w-full h-full object-cover" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-800 block">📷 Attached Clinical Image</span>
+                <span className="text-[11px] text-slate-500 block">Assessed via WHO IMNCI Vision Model</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Detected Danger Signs List */}
