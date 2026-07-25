@@ -1,7 +1,7 @@
 import React from 'react';
 import { Visit, Child } from '../types';
 import { generateReferralSlipPDF } from '../utils/pdfGenerator';
-import { Printer, Download, ArrowLeft, Shield, Building, QrCode, UserCheck } from 'lucide-react';
+import { Printer, Download, ArrowLeft, Shield, QrCode, UserCheck, X } from 'lucide-react';
 
 interface ReferralSlipModalProps {
   visit: Visit;
@@ -25,13 +25,13 @@ export const ReferralSlipModal: React.FC<ReferralSlipModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl space-y-6 my-8">
+    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl space-y-6 my-8">
         {/* Top Control Bar */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <button
             onClick={onClose}
-            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5"
+            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back</span>
@@ -40,7 +40,7 @@ export const ReferralSlipModal: React.FC<ReferralSlipModalProps> = ({
           <div className="flex items-center space-x-2">
             <button
               onClick={handleDownloadPDF}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow transition flex items-center space-x-1.5"
+              className="px-4 py-2 bg-[#0058bd] hover:bg-[#004899] text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center space-x-1.5"
             >
               <Download className="w-4 h-4" />
               <span>Download PDF</span>
@@ -48,16 +48,23 @@ export const ReferralSlipModal: React.FC<ReferralSlipModalProps> = ({
 
             <button
               onClick={handlePrint}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold text-xs rounded-xl border border-slate-700 transition flex items-center space-x-1.5"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition flex items-center space-x-1.5"
             >
               <Printer className="w-4 h-4" />
               <span>Print Slip</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition"
+            >
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
         {/* Slip Document Canvas (Print Target) */}
-        <div id="referral-slip-print" className="bg-white text-slate-900 rounded-2xl p-6 sm:p-8 shadow-inner border border-slate-200 space-y-6">
+        <div id="referral-slip-print" className="bg-white text-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-200 space-y-6">
           {/* Slip Header */}
           <div className={`p-4 rounded-xl text-white flex items-center justify-between ${isRed ? 'bg-red-600' : 'bg-amber-600'}`}>
             <div>
@@ -65,7 +72,7 @@ export const ReferralSlipModal: React.FC<ReferralSlipModalProps> = ({
                 <Shield className="w-5 h-5 text-white" />
                 <h2 className="font-extrabold text-lg tracking-wide uppercase">NIGRAAN • URGENT CLINICAL REFERRAL</h2>
               </div>
-              <p className="text-xs text-white/90">Primary Maternal & Child Health Assessment (WHO IMNCI Protocol)</p>
+              <p className="text-xs text-white/90">Primary Health Assessment • IMNCI Protocol</p>
             </div>
 
             <div className="text-right font-mono text-xs font-bold bg-white/20 px-3 py-1.5 rounded-lg border border-white/30">
@@ -81,7 +88,7 @@ export const ReferralSlipModal: React.FC<ReferralSlipModalProps> = ({
               <div><strong>Household ID:</strong> {child.householdId}</div>
               <div><strong>Guardian:</strong> {child.guardianName}</div>
               <div><strong>Phone:</strong> {child.phone || 'N/A'}</div>
-              <div className="col-span-2"><strong>Village / UC:</strong> {child.villageUC}</div>
+              <div className="col-span-2"><strong>Location / UC:</strong> {child.villageUC}</div>
             </div>
           </div>
 
@@ -116,7 +123,7 @@ export const ReferralSlipModal: React.FC<ReferralSlipModalProps> = ({
             <div><strong>Destination Facility:</strong> {visit.assessment.targetFacility || 'Basic Health Unit (BHU) UC-14, Rahim Yar Khan'}</div>
             <div><strong>Instructions:</strong> {visit.assessment.recommendedActionEnglish}</div>
             <div className="text-slate-800 font-semibold bg-amber-100 p-2 rounded border border-amber-200 mt-1">
-              اردو ہدایت: {visit.assessment.recommendedActionUrdu}
+              ہدایت: {visit.assessment.recommendedActionUrdu}
             </div>
           </div>
 
@@ -125,9 +132,9 @@ export const ReferralSlipModal: React.FC<ReferralSlipModalProps> = ({
             <div className="space-y-1">
               <div className="flex items-center space-x-1 font-semibold text-slate-800">
                 <UserCheck className="w-4 h-4 text-emerald-600" />
-                <span>Assessed by LHW Amina Bibi (Code: LHW-3094, UC-14)</span>
+                <span>Assessed by LHW Amina Bibi (Code: LHW-3094)</span>
               </div>
-              <p className="text-[10px] text-slate-400">Nigraan Offline Decision Support • Build with Gemma Project</p>
+              <p className="text-[10px] text-slate-400">Nigraan Offline Decision Support • Gemma Model</p>
             </div>
 
             <div className="flex items-center space-x-3 text-right">
@@ -146,3 +153,4 @@ export const ReferralSlipModal: React.FC<ReferralSlipModalProps> = ({
     </div>
   );
 };
+
