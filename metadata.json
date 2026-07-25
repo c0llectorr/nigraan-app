@@ -1,0 +1,6 @@
+{
+  "name": "Nigraan - Offline AI Triage Companion",
+  "description": "Offline-first clinical decision-support & WHO IMNCI triage tool for Lady Health Workers conducting maternal & child health visits.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
